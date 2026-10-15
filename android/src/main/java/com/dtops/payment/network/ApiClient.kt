@@ -3,17 +3,15 @@ package com.dtops.payment.network
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    private const val BASE_URL = "https://dtops-demo.loca.lt" // Bulletproof public tunnel
+    private const val BASE_URL = "https://dtops-project.onrender.com/"
 
     private val client = OkHttpClient.Builder()
-        .addInterceptor { chain ->
-            val request = chain.request().newBuilder()
-                .addHeader("Bypass-Tunnel-Reminder", "true")
-                .build()
-            chain.proceed(request)
-        }
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
     private val retrofit = Retrofit.Builder()
@@ -24,4 +22,3 @@ object ApiClient {
 
     val apiService: BackendService = retrofit.create(BackendService::class.java)
 }
-
