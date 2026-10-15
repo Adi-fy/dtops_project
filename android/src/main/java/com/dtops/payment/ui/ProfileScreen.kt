@@ -11,6 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
 import com.dtops.payment.data.AppDatabase
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -19,7 +20,7 @@ import com.dtops.payment.network.ApiClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(navController: NavController) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val db = AppDatabase.getDatabase(context)
@@ -127,6 +128,26 @@ fun ProfileScreen() {
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
         ) {
             Text("Sync True Global Balance")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        OutlinedButton(
+            onClick = {
+                coroutineScope.launch {
+                    db.walletDao().clearWallet()
+                    db.transactionDao().clearTransactions()
+                    android.widget.Toast.makeText(context, "Logged out successfully", android.widget.Toast.LENGTH_SHORT).show()
+                    navController.navigate("login") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(0.8f),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+        ) {
+            Text("Log Out")
         }
     }
 }

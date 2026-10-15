@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                             composable("send") { SendScreen(navController) }
                             composable("scan") { ScanScreen(navController) }
                             composable("history") { TransactionsScreen() }
-                            composable("profile") { ProfileScreen() }
+                            composable("profile") { ProfileScreen(navController) }
                         }
                     }
                 }

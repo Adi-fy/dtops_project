@@ -39,5 +39,8 @@ interface WalletDao {
         }
         return false
     }
+
+    @Query("DELETE FROM wallet")
+    suspend fun clearWallet()
 }
 
