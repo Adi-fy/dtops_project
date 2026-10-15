@@ -19,8 +19,14 @@ interface WalletDao {
         val currentWallet = getWallet()
         if (currentWallet != null) {
             insertOrUpdate(currentWallet.copy(localBalance = currentWallet.localBalance + amount))
-        } else {
-            insertOrUpdate(WalletEntity(deviceId = "device_alice", localBalance = amount))
+        }
+    }
+
+    @Transaction
+    suspend fun updateBalance(amount: Double) {
+        val currentWallet = getWallet()
+        if (currentWallet != null) {
+            insertOrUpdate(currentWallet.copy(localBalance = amount))
         }
     }
 

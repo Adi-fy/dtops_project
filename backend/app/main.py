@@ -7,11 +7,23 @@ models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="DTOPS Backend")
 
-@app.post("/register")
+def get_user_highest_seq(user_id: str, db: Session) -> int:
+    highest_tx = db.query(models.Transaction).filter(
+        models.Transaction.sender_id == user_id,
+        models.Transaction.status == models.TransactionStatus.COMMITTED
+    ).order_by(models.Transaction.sequence_counter.desc()).first()
+    return highest_tx.sequence_counter if highest_tx else 0
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "DTOPS Settlement Engine"}
+
+@app.post("/register", response_model=schemas.RegisterResponse)
 def register(request: schemas.RegisterRequest, db: Session = Depends(database.get_db)):
     existing = db.query(models.User).filter(models.User.id == request.device_id).first()
     if existing:
-        return {"status": "Already registered", "balance": existing.online_balance}
+        highest_seq = get_user_highest_seq(existing.id, db)
+        return schemas.RegisterResponse(status="Already registered", balance=existing.online_balance, highest_sequence_counter=highest_seq)
         
     new_user = models.User(
         id=request.device_id,
@@ -21,7 +33,34 @@ def register(request: schemas.RegisterRequest, db: Session = Depends(database.ge
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"status": "Success", "balance": new_user.online_balance}
+    return schemas.RegisterResponse(status="Success", balance=new_user.online_balance, highest_sequence_counter=0)
+
+@app.post("/topup")
+def topup_user(req: schemas.TopUpRequest, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if req.amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid top-up amount")
+    
+    user.online_balance += req.amount
+    db.commit()
+    return {"message": "Top-up successful", "new_balance": user.online_balance}
+
+@app.get("/balance/{user_id}", response_model=schemas.BalanceResponse)
+def get_balance(user_id: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return schemas.BalanceResponse(balance=user.online_balance)
+
+@app.get("/user/{user_id}/state", response_model=schemas.UserStateResponse)
+def get_user_state(user_id: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    highest_seq = get_user_highest_seq(user.id, db)
+    return schemas.UserStateResponse(user_id=user.id, balance=user.online_balance, highest_sequence_counter=highest_seq)
 
 @app.post("/sync", response_model=schemas.SyncResponse)
 def sync_transactions(request: schemas.SyncRequest, db: Session = Depends(database.get_db)):
@@ -114,7 +153,7 @@ def admin_dashboard(db: Session = Depends(database.get_db)):
                 <div class="card">
                     <h2>👥 Registered Users (Global Balance)</h2>
                     <table>
-                        <tr><th>Device ID</th><th>Online Balance</th></tr>
+                        <tr><th>User ID</th><th>Online Balance</th></tr>
                         {"".join(f"<tr><td>{u.id}</td><td>₹{u.online_balance}</td></tr>" for u in users)}
                     </table>
                 </div>

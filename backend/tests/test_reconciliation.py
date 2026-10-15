@@ -99,3 +99,36 @@ def test_double_spend_reconciliation():
     assert charlie_report["status"] == "REJECTED"
     assert charlie_report["message"] == "REJECTED_DOUBLE_SPEND"
 
+def test_health_and_user_state():
+    # 1. Health check
+    res = client.get("/health")
+    assert res.status_code == 200
+    assert res.json()["status"] == "ok"
+
+    # 2. Register a new user
+    dev = Device("Dave")
+    res_reg = client.post("/register", json={"device_id": dev.device_id, "public_key_pem": dev.pub_pem})
+    assert res_reg.status_code == 200
+    assert res_reg.json()["balance"] == 1000.0
+    assert res_reg.json()["highest_sequence_counter"] == 0
+
+    # 3. Check user state
+    res_state = client.get(f"/user/{dev.device_id}/state")
+    assert res_state.status_code == 200
+    assert res_state.json()["balance"] == 1000.0
+    assert res_state.json()["highest_sequence_counter"] == 0
+
+def test_solvency_check():
+    eve = Device("Eve")
+    frank = Device("Frank")
+    for d in [eve, frank]:
+        client.post("/register", json={"device_id": d.device_id, "public_key_pem": d.pub_pem})
+
+    # Eve tries to spend ₹5000 when balance is ₹1000
+    bad_tx = eve.sign_tx(frank.device_id, 5000.0, 1)
+    res = client.post("/sync", json={"transactions": [bad_tx]})
+    assert res.status_code == 200
+    report = res.json()["report"][0]
+    assert report["status"] == "REJECTED"
+    assert "Insufficient global balance" in report["message"]
+

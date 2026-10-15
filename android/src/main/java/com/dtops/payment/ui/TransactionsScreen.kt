@@ -28,7 +28,11 @@ fun TransactionsScreen() {
     val db = AppDatabase.getDatabase(context)
     var transactions by remember { mutableStateOf<List<TransactionEntity>>(emptyList()) }
     
+    var currentUserId by remember { mutableStateOf("") }
+    
     LaunchedEffect(Unit) {
+        val wallet = db.walletDao().getWallet()
+        currentUserId = wallet?.userId ?: ""
         transactions = db.transactionDao().getAllTransactions().reversed()
     }
     
@@ -43,7 +47,7 @@ fun TransactionsScreen() {
         } else {
             LazyColumn {
                 items(transactions) { tx ->
-                    TransactionItem(tx)
+                    TransactionItem(tx, currentUserId)
                 }
             }
         }
@@ -51,7 +55,7 @@ fun TransactionsScreen() {
 }
 
 @Composable
-fun TransactionItem(tx: TransactionEntity) {
+fun TransactionItem(tx: TransactionEntity, currentUserId: String) {
     val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
     val dateStr = dateFormat.format(Date(tx.timestamp))
     
@@ -61,7 +65,7 @@ fun TransactionItem(tx: TransactionEntity) {
         else -> WarningYellow
     }
     
-    val isOutbound = tx.senderId == "device_alice"
+    val isOutbound = tx.senderId == currentUserId
     val amountPrefix = if (isOutbound) "-" else "+"
     val amountColor = if (isOutbound) MaterialTheme.colorScheme.onSurface else EmeraldGreen
     

@@ -5,8 +5,8 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "wallet")
 data class WalletEntity(
-    @PrimaryKey val id: Int = 1, // Single row for POC
-    val deviceId: String,
+    @PrimaryKey val id: Int = 1,
+    val userId: String,
     val localBalance: Double
 )
 

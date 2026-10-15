@@ -1,12 +1,16 @@
-# Python / Backend
-venv/
+# Python
 __pycache__/
-*.pyc
-*.sqlite3
+*.py[cod]
+*$py.class
+venv/
+*.db
+.pytest_cache/
 
-# Android
+# Android / Gradle
 .gradle/
 build/
+*/build/
 local.properties
 .idea/
 *.iml
+.DS_Store

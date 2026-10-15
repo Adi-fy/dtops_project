@@ -13,6 +13,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dtops.payment.data.AppDatabase
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.dtops.payment.network.ApiClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,10 +27,13 @@ fun ProfileScreen() {
     var balance by remember { mutableStateOf(0.0) }
     var topUpAmount by remember { mutableStateOf("") }
     
+    var userId by remember { mutableStateOf("") }
+    
     // Fetch initial balance
     LaunchedEffect(Unit) {
         val wallet = db.walletDao().getWallet()
         balance = wallet?.localBalance ?: 0.0
+        userId = wallet?.userId ?: "Unknown"
     }
     
     Column(
@@ -45,7 +51,7 @@ fun ProfileScreen() {
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Device ID: device_alice", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("User ID: $userId", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Current Balance", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("₹$balance", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -68,15 +74,59 @@ fun ProfileScreen() {
                 val amount = topUpAmount.toDoubleOrNull()
                 if (amount != null && amount > 0) {
                     coroutineScope.launch {
-                        db.walletDao().addFunds(amount)
-                        balance = db.walletDao().getWallet()?.localBalance ?: 0.0
-                        topUpAmount = ""
+                        try {
+                            val wallet = db.walletDao().getWallet()
+                            val userId = wallet?.userId ?: return@launch
+                            
+                            // 1. Call Backend
+                            val response = withContext(Dispatchers.IO) {
+                                ApiClient.apiService.topUp(com.dtops.payment.network.TopUpRequest(userId, amount))
+                            }
+                            
+                            // 2. If successful, add funds locally
+                            db.walletDao().addFunds(amount)
+                            balance = db.walletDao().getWallet()?.localBalance ?: 0.0
+                            topUpAmount = ""
+                            android.widget.Toast.makeText(context, "Top-up successful! New online balance: ₹${response.new_balance}", android.widget.Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Top-up failed. Ensure you are online and server is running.", android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth(0.8f)
         ) {
-            Text("Top Up Wallet")
+            Text("Top Up via Bank Network")
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                coroutineScope.launch {
+                    try {
+                        val wallet = db.walletDao().getWallet()
+                        val currentUserId = wallet?.userId ?: return@launch
+                        
+                        val response = withContext(Dispatchers.IO) {
+                            ApiClient.apiService.getUserState(currentUserId)
+                        }
+                        
+                        db.walletDao().updateBalance(response.balance)
+                        val prefs = context.getSharedPreferences("dtops_prefs", android.content.Context.MODE_PRIVATE)
+                        prefs.edit().putInt("highest_seq_${currentUserId}", response.highest_sequence_counter).apply()
+
+                        balance = db.walletDao().getWallet()?.localBalance ?: 0.0
+                        android.widget.Toast.makeText(context, "State synchronized! Online balance: ₹${response.balance}", android.widget.Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Sync failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(0.8f),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Sync True Global Balance")
         }
     }
 }

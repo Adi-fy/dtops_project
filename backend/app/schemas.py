@@ -11,6 +11,23 @@ class RegisterRequest(BaseModel):
     device_id: str
     public_key_pem: str
 
+class RegisterResponse(BaseModel):
+    status: str
+    balance: float
+    highest_sequence_counter: int
+
+class TopUpRequest(BaseModel):
+    user_id: str
+    amount: float
+
+class BalanceResponse(BaseModel):
+    balance: float
+
+class UserStateResponse(BaseModel):
+    user_id: str
+    balance: float
+    highest_sequence_counter: int
+
 class TransactionSchema(BaseModel):
     tx_id: str
     sender_id: str

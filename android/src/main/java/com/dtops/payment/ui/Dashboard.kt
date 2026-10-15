@@ -86,35 +86,50 @@ fun Dashboard(navController: NavController) {
                     isSyncing = true
                     coroutineScope.launch {
                         try {
+                            val wallet = db.walletDao().getWallet()
+                            val myUserId = wallet?.userId ?: "Unknown"
                             val pending = db.transactionDao().getPendingTransactions()
-                            if (pending.isEmpty()) {
-                                Toast.makeText(context, "All caught up! No pending transactions.", Toast.LENGTH_SHORT).show()
-                                isSyncing = false
-                                return@launch
+
+                            if (pending.isNotEmpty()) {
+                                val schemas = pending.map {
+                                    TransactionSchema(
+                                        tx_id = it.txId,
+                                        sender_id = it.senderId,
+                                        receiver_id = it.receiverId,
+                                        amount = it.amount,
+                                        sequence_counter = it.sequenceCounter,
+                                        nonce = it.nonce,
+                                        timestamp = it.timestamp,
+                                        signature = it.signature
+                                    )
+                                }
+                                
+                                val response = withContext(Dispatchers.IO) {
+                                    ApiClient.apiService.syncTransactions(SyncRequest(schemas))
+                                }
+                                
+                                response.report.forEach { reportItem ->
+                                    val finalStatus = if (reportItem.status == "COMMITTED") "SYNCED" else reportItem.status
+                                    db.transactionDao().updateTransactionStatus(reportItem.tx_id, finalStatus)
+                                }
                             }
-                            
-                            val schemas = pending.map {
-                                TransactionSchema(
-                                    tx_id = it.txId,
-                                    sender_id = it.senderId,
-                                    receiver_id = it.receiverId,
-                                    amount = it.amount,
-                                    sequence_counter = it.sequenceCounter,
-                                    nonce = it.nonce,
-                                    timestamp = it.timestamp,
-                                    signature = it.signature
-                                )
+
+                            // Authoritative State Sync from Backend
+                            try {
+                                val userState = withContext(Dispatchers.IO) {
+                                    ApiClient.apiService.getUserState(myUserId)
+                                }
+                                db.walletDao().updateBalance(userState.balance)
+                                val prefs = context.getSharedPreferences("dtops_prefs", android.content.Context.MODE_PRIVATE)
+                                prefs.edit().putInt("highest_seq_${myUserId}", userState.highest_sequence_counter).apply()
+                            } catch (e: Exception) {
+                                // If offline or backend unreachable, keep local balance
                             }
-                            
-                            val response = withContext(Dispatchers.IO) {
-                                ApiClient.apiService.syncTransactions(SyncRequest(schemas))
-                            }
-                            
-                            response.report.forEach { reportItem ->
-                                val finalStatus = if (reportItem.status == "COMMITTED") "SYNCED" else reportItem.status
-                                db.transactionDao().updateTransactionStatus(reportItem.tx_id, finalStatus)
-                            }
-                            Toast.makeText(context, "Successfully synced ${response.report.size} transactions!", Toast.LENGTH_SHORT).show()
+
+                            // Refresh UI balance
+                            balance = db.walletDao().getWallet()?.localBalance ?: 0.0
+                            val msg = if (pending.isEmpty()) "Balance refreshed from server!" else "Successfully synced ${pending.size} transactions!"
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, "Sync failed: ${e.message}", Toast.LENGTH_LONG).show()
                         } finally {

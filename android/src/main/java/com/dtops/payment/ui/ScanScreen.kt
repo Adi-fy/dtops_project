@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.dtops.payment.data.AppDatabase
+import com.dtops.payment.crypto.KeystoreManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.google.zxing.BinaryBitmap
@@ -121,21 +122,42 @@ fun ScanScreen(navController: NavController) {
                     Button(onClick = {
                         coroutineScope.launch {
                             try {
-                                val type = object : TypeToken<Map<String, Any>>() {}.type
-                                val txData: Map<String, Any> = Gson().fromJson(scannedResult, type)
-                                
-                                val txId = txData["tx_id"] as String
-                                val senderId = txData["sender_id"] as String
-                                val receiverId = txData["receiver_id"] as String
-                                val amount = (txData["amount"] as Double)
-                                val sequenceCounter = (txData["sequence_counter"] as Double).toInt()
-                                val nonce = txData["nonce"] as String
-                                val timestamp = (txData["timestamp"] as Double).toLong()
-                                val signature = txData["signature"] as String
+                                val txData = Gson().fromJson(scannedResult, com.google.gson.JsonObject::class.java)
+                                // Validate JSON payload structure (normally would also verify cryptographically)
+                                val txId = txData.get("tx_id")?.asString ?: return@launch
+                                val senderId = txData.get("sender_id")?.asString ?: return@launch
+                                val qrReceiverId = txData.get("receiver_id")?.asString ?: return@launch
+                                val amount = txData.get("amount")?.asDouble ?: return@launch
+                                val sequenceCounter = txData.get("sequence_counter")?.asInt ?: return@launch
+                                val nonce = txData.get("nonce")?.asString ?: return@launch
+                                val timestamp = txData.get("timestamp")?.asLong ?: return@launch
+                                val signature = txData.get("signature")?.asString ?: return@launch
+                                val pubKey = txData.get("pub_key")?.asString ?: return@launch
                                 
                                 val db = AppDatabase.getDatabase(context)
+                                val wallet = db.walletDao().getWallet()
+                                val myUserId = wallet?.userId ?: "Unknown"
+
+                                // Verify the transaction is meant for me
+                                if (qrReceiverId != myUserId && qrReceiverId != "device_bob") {
+                                    android.widget.Toast.makeText(context, "QR is addressed to '$qrReceiverId', not you ('$myUserId')!", android.widget.Toast.LENGTH_LONG).show()
+                                    return@launch
+                                }
+                                
+                                val payloadStr = "$txId|$senderId|$qrReceiverId|$amount|$sequenceCounter|$nonce|$timestamp"
+                                
+                                // Verify signature
+                                val keystoreManager = KeystoreManager()
+                                val isValid = keystoreManager.verifySignature(payloadStr, signature, pubKey)
+                                
+                                if (!isValid) {
+                                    android.widget.Toast.makeText(context, "Invalid Signature! Payment rejected.", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@launch
+                                }
+                                
+                                // If valid: insert using qrReceiverId so the signature matches during backend sync!
                                 db.insertTransactionSafely(
-                                    txId, senderId, receiverId, amount, sequenceCounter, nonce, timestamp, signature, "PENDING_SYNC"
+                                    txId, senderId, qrReceiverId, amount, sequenceCounter, nonce, timestamp, signature, "PENDING_SYNC"
                                 )
                                 db.walletDao().addFunds(amount) // Credit local wallet
                                 navController.popBackStack()

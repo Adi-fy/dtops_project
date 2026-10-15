@@ -4,12 +4,14 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
+import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.X509EncodedKeySpec
 
 class KeystoreManager {
     private val keyAlias = "dtops_key"
@@ -77,6 +79,22 @@ class KeystoreManager {
         signature.update(payload.toByteArray(Charsets.UTF_8))
         val sigBytes = Base64.decode(signatureStr, Base64.NO_WRAP)
         return signature.verify(sigBytes)
+    }
+
+    fun verifySignature(payload: String, signatureStr: String, pubKeyPem: String): Boolean {
+        try {
+            val pubKeyString = pubKeyPem.replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replace("\n", "")
+                .trim()
+            val pubKeyBytes = Base64.decode(pubKeyString, Base64.NO_WRAP)
+            val keyFactory = KeyFactory.getInstance("EC")
+            val x509KeySpec = X509EncodedKeySpec(pubKeyBytes)
+            val pubKey = keyFactory.generatePublic(x509KeySpec)
+            return verify(payload, signatureStr, pubKey)
+        } catch (e: Exception) {
+            return false
+        }
     }
 }
 

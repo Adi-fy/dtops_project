@@ -25,12 +25,16 @@ def verify_offline_transaction(tx: schemas.TransactionSchema, db: Session) -> tu
     except (ValueError, InvalidSignature, TypeError):
         return False, "Invalid signature"
 
-    # 2. Nonce Uniqueness
+    # 2. Solvency Check (Sender must have sufficient balance for the transaction)
+    if sender.online_balance < tx.amount:
+        return False, "Insufficient global balance"
+
+    # 3. Nonce Uniqueness (Replay Attack Prevention)
     existing_nonce = db.query(models.Transaction).filter(models.Transaction.nonce == tx.nonce).first()
     if existing_nonce:
         return False, "Replay Attack: Nonce already exists"
 
-    # 3. Monotonic Counter Check (Double-Spend Detection)
+    # 4. Monotonic Counter Check (Double-Spend Detection)
     highest_tx = db.query(models.Transaction).filter(
         models.Transaction.sender_id == tx.sender_id,
         models.Transaction.status == models.TransactionStatus.COMMITTED
@@ -39,16 +43,14 @@ def verify_offline_transaction(tx: schemas.TransactionSchema, db: Session) -> tu
     highest_counter = highest_tx.sequence_counter if highest_tx else 0
     
     if tx.sequence_counter <= highest_counter:
-        # Double Spend detected! Log to ConflictLog and penalize
+        # Double Spend detected! Log to ConflictLog and reject
         conflict = models.ConflictLog(
             offending_sender_id=tx.sender_id,
             duplicate_sequence=tx.sequence_counter,
             attempted_tx_id=tx.tx_id,
-            resolved_action="REJECTED_DOUBLE_SPEND_AND_PENALIZED"
+            resolved_action="REJECTED_DOUBLE_SPEND"
         )
         db.add(conflict)
-        # Penalize sender
-        sender.online_balance -= tx.amount # Simplistic penalty strategy
         db.commit()
         return False, "REJECTED_DOUBLE_SPEND"
     

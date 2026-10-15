@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import java.security.MessageDigest
 
-@Database(entities = [TransactionEntity::class, WalletEntity::class], version = 2, exportSchema = false)
+@Database(entities = [TransactionEntity::class, WalletEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun walletDao(): WalletDao
